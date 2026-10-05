@@ -45,3 +45,22 @@ slot only once in normal operation. No scheduler or transport is included here.
 
 Requires Node.js 22 or newer. Run `npm test` for the focused quality and
 missing-input/delivery-guard checks. There are no external dependencies.
+
+## Dev container
+
+A ready-to-use dev container lives in `.devcontainer/`. Open the repository in
+VS Code and choose **Reopen in Container**, or use the Dev Containers CLI. It is
+based on the Node.js 22 image, adds the GitHub CLI and Docker-in-Docker
+features, and installs the same tooling used elsewhere (`eslint`, `prettier`,
+`vim`, `jq`) plus the Claude Code extension.
+
+Host credentials are reused rather than re-authenticated: the `postCreate`
+setup copies your host `.gitconfig`, SSH keys, and `~/.config/gh` into the
+container, so `gh` and `git` work with your existing login. Nothing needs to be
+installed on the host.
+
+Run the checks inside the container:
+
+```sh
+npm test
+```
