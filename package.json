@@ -1,12 +1,55 @@
 {
   "name": "openclaw-dreaming-curator",
   "version": "0.1.0",
+  "description": "Dependency-free, report-only review aid for OpenClaw dreaming phase output.",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebgru/openclaw-dreaming-curator.git"
+  },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node scripts/dreaming-quality-gate.test.mjs && node scripts/dreaming-unavailable-guard.test.mjs"
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "check": "node --check scripts/dreaming-curator.mjs && node --check scripts/dreaming-quality.mjs && node --check scripts/dreaming-review-delivery.mjs",
+    "test": "node --test",
+    "test:coverage": "c8 node --test"
+  },
+  "files": [
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "c8": {
+    "include": [
+      "scripts/**/*.mjs"
+    ],
+    "exclude": [
+      "scripts/**/*.test.mjs",
+      "test/**"
+    ],
+    "all": true,
+    "reporter": [
+      "text",
+      "text-summary",
+      "lcov"
+    ],
+    "check-coverage": true,
+    "lines": 90,
+    "functions": 90,
+    "branches": 90,
+    "statements": 90
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "c8": "^12.0.0",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9"
   }
 }

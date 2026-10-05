@@ -1,0 +1,61 @@
+name: Release
+
+# Publishing is tag-driven only: pushing a v*.*.* tag builds the release
+# tarball and attaches it to a GitHub Release. Nothing is published on plain
+# branch pushes.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches package version
+        run: |
+          PKG_VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$PKG_VERSION" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package version ${PKG_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Test with coverage (>= 90%)
+        run: npm run test:coverage
+
+      # Package exactly the runtime assets: the scripts, README, LICENSE, and
+      # package.json. Tests/config live outside scripts/ so they are excluded.
+      - name: Build release tarball
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          tar -czf "openclaw-dreaming-curator-${VERSION}.tar.gz" \
+            scripts README.md LICENSE package.json
+          tar -tzf "openclaw-dreaming-curator-${VERSION}.tar.gz"
+
+      - name: Attach tarball to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: openclaw-dreaming-curator-*.tar.gz
+          generate_release_notes: true

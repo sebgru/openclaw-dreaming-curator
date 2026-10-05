@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 // treat process.cwd() as the data root, so they can be run unmodified against
 // a disposable temp directory instead of the real workspace memory/ tree.
 
-const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SCRIPTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
 const CURATOR = path.join(SCRIPTS_DIR, 'dreaming-curator.mjs');
 const DELIVERY = path.join(SCRIPTS_DIR, 'dreaming-review-delivery.mjs');
 
@@ -43,10 +43,16 @@ withTempRoot((root) => {
 
   const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
   assert.equal(report.status, 'unavailable');
-  assert.ok(report.missingInput && report.missingInput.includes(day), 'missingInput must name the day');
+  assert.ok(
+    report.missingInput && report.missingInput.includes(day),
+    'missingInput must name the day',
+  );
   assert.deepEqual(report.candidates, []);
 
-  const digest = fs.readFileSync(path.join(root, 'memory', 'dreaming', 'digests', `${day}.md`), 'utf8');
+  const digest = fs.readFileSync(
+    path.join(root, 'memory', 'dreaming', 'digests', `${day}.md`),
+    'utf8',
+  );
   assert.match(digest, /INCOMPLETE\/UNAVAILABLE/);
 });
 
@@ -93,21 +99,40 @@ withTempRoot((root) => {
   );
   // rem and deep deliberately absent.
   const stdout = runNode(CURATOR, [day], root);
-  assert.match(stdout, /Input status: UNAVAILABLE/, 'curator stdout should flag a partial phase set as unavailable');
+  assert.match(
+    stdout,
+    /Input status: UNAVAILABLE/,
+    'curator stdout should flag a partial phase set as unavailable',
+  );
 
   const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
   assert.equal(report.status, 'unavailable');
-  assert.match(report.missingInput, /missing rem, deep/, 'missingInput must name the specific missing phases');
-  assert.match(report.missingInput, /present: light/, 'missingInput must name the phase(s) that were present');
+  assert.match(
+    report.missingInput,
+    /missing rem, deep/,
+    'missingInput must name the specific missing phases',
+  );
+  assert.match(
+    report.missingInput,
+    /present: light/,
+    'missingInput must name the phase(s) that were present',
+  );
   assert.deepEqual(report.candidates, []);
 
-  const digest = fs.readFileSync(path.join(root, 'memory', 'dreaming', 'digests', `${day}.md`), 'utf8');
+  const digest = fs.readFileSync(
+    path.join(root, 'memory', 'dreaming', 'digests', `${day}.md`),
+    'utf8',
+  );
   assert.match(digest, /INCOMPLETE\/UNAVAILABLE/);
 
   // End-to-end: delivery against the curator's own partial-input output must
   // also fail closed, not just against a hand-crafted fixture (Case 3 below).
   const deliveryStdout = runNode(DELIVERY, [day, '1'], root);
-  assert.equal(deliveryStdout.trim(), 'NO_REPLY', 'delivery must refuse a partial-phase-set unavailable report too');
+  assert.equal(
+    deliveryStdout.trim(),
+    'NO_REPLY',
+    'delivery must refuse a partial-phase-set unavailable report too',
+  );
 });
 
 // --- Case 3: fail-closed guard refuses rendering when status is 'unavailable',
@@ -118,28 +143,38 @@ withTempRoot((root) => {
   fs.mkdirSync(reviewDir, { recursive: true });
   fs.writeFileSync(
     candidatesFile(root, day),
-    JSON.stringify({
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      mode: 'report-only',
-      status: 'unavailable',
-      missingInput: 'synthetic unavailable fixture',
-      note: 'test fixture',
-      candidates: [{
-        text: 'The user prefers tea over coffee in the evening.',
-        title: 'Evening beverage preference',
-        proposal: 'The user prefers tea over coffee in the evening.',
-        why: 'Stated preference.',
-        target: 'USER.md',
-        evidence: 'memory/2026-01-03.md:1-1',
-        sourceFile: 'memory/2026-01-03.md',
-        score: 0.9,
-        confidence: 0.8,
-      }],
-    }, null, 2) + '\n',
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        mode: 'report-only',
+        status: 'unavailable',
+        missingInput: 'synthetic unavailable fixture',
+        note: 'test fixture',
+        candidates: [
+          {
+            text: 'The user prefers tea over coffee in the evening.',
+            title: 'Evening beverage preference',
+            proposal: 'The user prefers tea over coffee in the evening.',
+            why: 'Stated preference.',
+            target: 'USER.md',
+            evidence: 'memory/2026-01-03.md:1-1',
+            sourceFile: 'memory/2026-01-03.md',
+            score: 0.9,
+            confidence: 0.8,
+          },
+        ],
+      },
+      null,
+      2,
+    ) + '\n',
   );
   const stdout = runNode(DELIVERY, [day, '1'], root);
-  assert.equal(stdout.trim(), 'NO_REPLY', 'renderer must refuse an unavailable-status report regardless of candidates');
+  assert.equal(
+    stdout.trim(),
+    'NO_REPLY',
+    'renderer must refuse an unavailable-status report regardless of candidates',
+  );
 });
 
 // --- Case 3b: malformed or unknown canonical envelopes must fail closed. ---
@@ -154,17 +189,19 @@ withTempRoot((root) => {
     status: 'ok',
     missingInput: null,
     note: 'test fixture',
-    candidates: [{
-      text: 'The user prefers tea over coffee in the evening.',
-      title: 'Evening beverage preference',
-      proposal: 'The user prefers tea over coffee in the evening.',
-      why: 'Stated preference.',
-      target: 'USER.md',
-      evidence: 'memory/2026-01-06.md:1-1',
-      sourceFile: 'memory/2026-01-06.md',
-      score: 0.9,
-      confidence: 0.8,
-    }],
+    candidates: [
+      {
+        text: 'The user prefers tea over coffee in the evening.',
+        title: 'Evening beverage preference',
+        proposal: 'The user prefers tea over coffee in the evening.',
+        why: 'Stated preference.',
+        target: 'USER.md',
+        evidence: 'memory/2026-01-06.md:1-1',
+        sourceFile: 'memory/2026-01-06.md',
+        score: 0.9,
+        confidence: 0.8,
+      },
+    ],
   };
   const malformed = [
     { ...validEnvelope, schemaVersion: 2 },
@@ -177,7 +214,11 @@ withTempRoot((root) => {
   for (const [index, report] of malformed.entries()) {
     fs.writeFileSync(candidatesFile(root, day), JSON.stringify(report, null, 2) + '\n');
     const stdout = runNode(DELIVERY, [day, '1'], root);
-    assert.equal(stdout.trim(), 'NO_REPLY', `malformed canonical envelope ${index + 1} must not render`);
+    assert.equal(
+      stdout.trim(),
+      'NO_REPLY',
+      `malformed canonical envelope ${index + 1} must not render`,
+    );
   }
 });
 
@@ -189,31 +230,48 @@ withTempRoot((root) => {
   fs.mkdirSync(reviewDir, { recursive: true });
   fs.writeFileSync(
     candidatesFile(root, day),
-    JSON.stringify({
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      mode: 'report-only',
-      status: 'ok',
-      missingInput: null,
-      note: 'test fixture',
-      candidates: [{
-        text: 'The user prefers tea over coffee in the evening.',
-        title: 'Evening beverage preference',
-        proposal: 'The user prefers tea over coffee in the evening.',
-        why: 'Stated preference.',
-        target: 'USER.md',
-        evidence: 'memory/2026-01-04.md:1-1',
-        sourceFile: 'memory/2026-01-04.md',
-        score: 0.9,
-        confidence: 0.8,
-      }],
-    }, null, 2) + '\n',
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        mode: 'report-only',
+        status: 'ok',
+        missingInput: null,
+        note: 'test fixture',
+        candidates: [
+          {
+            text: 'The user prefers tea over coffee in the evening.',
+            title: 'Evening beverage preference',
+            proposal: 'The user prefers tea over coffee in the evening.',
+            why: 'Stated preference.',
+            target: 'USER.md',
+            evidence: 'memory/2026-01-04.md:1-1',
+            sourceFile: 'memory/2026-01-04.md',
+            score: 0.9,
+            confidence: 0.8,
+          },
+        ],
+      },
+      null,
+      2,
+    ) + '\n',
   );
   const stdout = runNode(DELIVERY, [day, '1'], root);
-  assert.match(stdout, /Evening beverage preference/, 'a healthy ok-status report with a valid candidate must still render');
-  assert.equal(runNode(DELIVERY, [day, '1'], root), stdout, 'rendering must be repeatable if transport fails');
-  assert.equal(fs.existsSync(path.join(root, 'memory', 'dreaming', 'review-state.json')), false,
-    'stdout rendering must not record confirmed delivery');
+  assert.match(
+    stdout,
+    /Evening beverage preference/,
+    'a healthy ok-status report with a valid candidate must still render',
+  );
+  assert.equal(
+    runNode(DELIVERY, [day, '1'], root),
+    stdout,
+    'rendering must be repeatable if transport fails',
+  );
+  assert.equal(
+    fs.existsSync(path.join(root, 'memory', 'dreaming', 'review-state.json')),
+    false,
+    'stdout rendering must not record confirmed delivery',
+  );
 });
 
 console.log('dreaming unavailable/missing-input + fail-closed delivery guard tests passed');
