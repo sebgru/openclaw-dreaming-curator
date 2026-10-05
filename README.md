@@ -147,10 +147,13 @@ based on the Node.js 22 image, adds the GitHub CLI and Docker-in-Docker
 features, and installs the same tooling used elsewhere (`eslint`, `prettier`,
 `vim`, `jq`) plus the Claude Code extension.
 
-Host credentials are reused rather than re-authenticated: the `postCreate`
-setup copies your host `.gitconfig`, SSH keys, and `~/.config/gh` into the
-container, so `gh` and `git` work with your existing login. Nothing needs to be
-installed on the host.
+Host credentials are reused rather than re-authenticated: the host
+`.gitconfig`, `~/.ssh`, and `~/.config/gh` are bind-mounted directly into the
+container user's home (`/home/node/...`), so `git` and `gh` use your existing
+host logins with no copy step. `postCreate` fixes ownership of the mounted
+paths, and `postStart` prints `gh auth status` on every start so a missing login
+is obvious. Nothing needs to be installed on the host, and there is no separate
+container login to maintain.
 
 Run the checks inside the container:
 
