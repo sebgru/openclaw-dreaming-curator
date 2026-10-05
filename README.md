@@ -1,8 +1,8 @@
 # OpenClaw Dreaming Curator
 
-[![CI](https://github.com/sebgru/openclaw-dreaming-curator/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/sebgru/openclaw-dreaming-curator/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/sebgru/openclaw-dreaming-curator/branch/master/graph/badge.svg)](https://codecov.io/gh/sebgru/openclaw-dreaming-curator)
-[![License: MIT](https://img.shields.io/github/license/sebgru/openclaw-dreaming-curator.svg?branch=master)](LICENSE)
+[![CI](https://github.com/sebgru/openclaw-dreaming-curator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sebgru/openclaw-dreaming-curator/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/sebgru/openclaw-dreaming-curator/branch/main/graph/badge.svg)](https://codecov.io/gh/sebgru/openclaw-dreaming-curator)
+[![License: MIT](https://img.shields.io/github/license/sebgru/openclaw-dreaming-curator.svg?branch=main)](LICENSE)
 
 A dependency-free, report-only review aid for OpenClaw dreaming phase output. It
 does not promote memories, edit startup files, contact a network service, or
@@ -120,7 +120,7 @@ branch pushes. To cut a release:
 
 ```sh
 npm version patch          # or minor / major — bumps package.json
-git push origin master --follow-tags
+git push origin main --follow-tags
 ```
 
 ## Dev container
