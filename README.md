@@ -106,6 +106,22 @@ statements, branches, functions, and lines.
   (`v*.*.*`). It repeats the checks, verifies the tag matches `package.json`,
   and attaches a release tarball to a GitHub Release.
 
+## Dependency updates
+
+Dependabot (`.github/dependabot.yml`) checks weekly for updates to the npm
+dev dependencies (grouped into a single PR) and the GitHub Actions used by the
+workflows, using `chore(deps)` / `ci(deps)` commit prefixes so they flow through
+the same checks as any other change.
+
+Security updates are a repository setting, not a file: enable **Dependabot
+alerts** and **Dependabot security updates** under
+_Settings → Code security and analysis_ (or with the GitHub CLI):
+
+```sh
+gh api -X PUT repos/sebgru/openclaw-dreaming-curator/vulnerability-alerts
+gh api -X PUT repos/sebgru/openclaw-dreaming-curator/automated-security-fixes
+```
+
 ## Releases
 
 Publishing is tag-driven only. Pushing a `v*.*.*` tag builds
