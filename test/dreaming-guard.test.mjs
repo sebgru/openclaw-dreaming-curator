@@ -1,138 +1,106 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import {
+  CURATOR,
+  DELIVERY,
+  candidatesFile,
+  digestFile,
+  runNode,
+  withTempRoot,
+  writeDailyNote,
+  writeIndex,
+  writeOutputFile,
+} from './helpers.mjs';
 
 // Regression test for the §5B fail-safe chain:
 // 1. dreaming-curator.mjs must report status: 'unavailable' (never a silent
-//    empty candidate list) when no phase input file exists for the day.
+//    empty candidate list) when an approved source (outputs/INDEX.md, a
+//    registered output file, or an existing-but-unreadable daily note) cannot
+//    be enumerated or read.
 // 2. dreaming-review-delivery.mjs must refuse to render anything — even a
 //    non-empty candidates array — when the canonical file says 'unavailable'.
-// Both scripts resolve their own imports relative to their file location and
-// treat process.cwd() as the data root, so they can be run unmodified against
-// a disposable temp directory instead of the real workspace memory/ tree.
+// Both scripts treat process.cwd() as the data root, so they can be run
+// unmodified against a disposable temp directory instead of the real
+// workspace.
 
-const SCRIPTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
-const CURATOR = path.join(SCRIPTS_DIR, 'dreaming-curator.mjs');
-const DELIVERY = path.join(SCRIPTS_DIR, 'dreaming-review-delivery.mjs');
-
-function withTempRoot(fn) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dreaming-guard-test-'));
-  try {
-    return fn(root);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-}
-
-function runNode(script, args, cwd) {
-  return execFileSync('node', [script, ...args], { cwd, encoding: 'utf8' });
-}
-
-function candidatesFile(root, day) {
-  return path.join(root, 'memory', 'review-candidates', `${day}-promotion-candidates.json`);
-}
-
-// --- Case 1: missing phase input must produce status 'unavailable' ---------
+// --- Case 1: missing outputs/INDEX.md must produce status 'unavailable' ----
 withTempRoot((root) => {
-  const day = '2026-01-01'; // deterministic day with no phase files anywhere
+  const day = '2026-01-01'; // deterministic day with no approved sources at all
   const stdout = runNode(CURATOR, [day], root);
   assert.match(stdout, /Input status: UNAVAILABLE/, 'curator stdout should flag unavailable input');
 
   const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
   assert.equal(report.status, 'unavailable');
   assert.ok(
-    report.missingInput && report.missingInput.includes(day),
-    'missingInput must name the day',
+    report.missingInput && report.missingInput.includes('outputs/INDEX.md'),
+    'missingInput must name the unreadable/missing approved source',
   );
   assert.deepEqual(report.candidates, []);
 
-  const digest = fs.readFileSync(
-    path.join(root, 'memory', 'dreaming', 'digests', `${day}.md`),
-    'utf8',
-  );
+  const digest = fs.readFileSync(digestFile(root, day), 'utf8');
   assert.match(digest, /INCOMPLETE\/UNAVAILABLE/);
 });
 
-// --- Case 2: a complete light+rem+deep phase set must produce status 'ok'.
-// The built-in dreaming plugin emits the three phases as one sweep. This
-// fixture reflects the complete-input contract. -----------------------------
+// --- Case 2: a readable but empty set of approved sources is a healthy 'ok'
+// report with zero candidates — not an error. --------------------------------
 withTempRoot((root) => {
   const day = '2026-01-02';
-  for (const phase of ['light', 'rem', 'deep']) {
-    const dir = path.join(root, 'memory', 'dreaming', phase);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, `${day}.md`),
-      [
-        '- Candidate: The user prefers tea over coffee in the evening.',
-        '  - confidence: 0.8',
-        '  - evidence: memory/2026-01-02.md:5-5',
-        '  - status: pending',
-        '',
-      ].join('\n'),
-    );
-  }
-  runNode(CURATOR, [day], root);
+  writeIndex(root, []);
+  const stdout = runNode(CURATOR, [day], root);
+  assert.match(stdout, /Input status: ok/);
   const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
   assert.equal(report.status, 'ok');
   assert.equal(report.missingInput, null);
+  assert.deepEqual(report.candidates, []);
 });
 
-// --- Case 2b: a partial phase set (only some of light/rem/deep present) must
-// be treated as incomplete, not as a healthy reduced-scope result. ----------
+// --- Case 2b: a registered output entry whose file is missing from disk must
+// be treated as incomplete, not silently skipped. ---------------------------
 withTempRoot((root) => {
   const day = '2026-01-05';
-  const lightDir = path.join(root, 'memory', 'dreaming', 'light');
-  fs.mkdirSync(lightDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(lightDir, `${day}.md`),
-    [
-      '- Candidate: The user prefers tea over coffee in the evening.',
-      '  - confidence: 0.8',
-      '  - evidence: memory/2026-01-05.md:5-5',
-      '  - status: pending',
-      '',
-    ].join('\n'),
-  );
-  // rem and deep deliberately absent.
+  writeIndex(root, [{ date: day, file: `outputs/${day}/ghost.md`, title: 'Ghost' }]);
+  // Registered file deliberately absent.
   const stdout = runNode(CURATOR, [day], root);
   assert.match(
     stdout,
     /Input status: UNAVAILABLE/,
-    'curator stdout should flag a partial phase set as unavailable',
+    'curator stdout should flag a registered-but-missing output as unavailable',
   );
 
   const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
   assert.equal(report.status, 'unavailable');
   assert.match(
     report.missingInput,
-    /missing rem, deep/,
-    'missingInput must name the specific missing phases',
-  );
-  assert.match(
-    report.missingInput,
-    /present: light/,
-    'missingInput must name the phase(s) that were present',
+    /missing on disk/,
+    'missingInput must name the registered output that could not be found',
   );
   assert.deepEqual(report.candidates, []);
 
-  const digest = fs.readFileSync(
-    path.join(root, 'memory', 'dreaming', 'digests', `${day}.md`),
-    'utf8',
-  );
+  const digest = fs.readFileSync(digestFile(root, day), 'utf8');
   assert.match(digest, /INCOMPLETE\/UNAVAILABLE/);
 
-  // End-to-end: delivery against the curator's own partial-input output must
+  // End-to-end: delivery against the curator's own unavailable output must
   // also fail closed, not just against a hand-crafted fixture (Case 3 below).
   const deliveryStdout = runNode(DELIVERY, [day, '1'], root);
   assert.equal(
     deliveryStdout.trim(),
     'NO_REPLY',
-    'delivery must refuse a partial-phase-set unavailable report too',
+    'delivery must refuse an unavailable report from the registered-output path too',
   );
+});
+
+// --- Case 2c: a daily note that exists but can't be read as a file (e.g. a
+// path collision) must be treated as unavailable, while a day with no note at
+// all is tolerated by the rolling lookback window. ---------------------------
+withTempRoot((root) => {
+  const day = '2026-01-07';
+  writeIndex(root, []);
+  fs.mkdirSync(path.join(root, 'memory', `${day}.md`), { recursive: true });
+  const stdout = runNode(CURATOR, [day], root);
+  assert.match(stdout, /Input status: UNAVAILABLE/);
+  const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+  assert.match(report.missingInput, /daily note\(s\) exist but could not be read/);
 });
 
 // --- Case 3: fail-closed guard refuses rendering when status is 'unavailable',
@@ -272,6 +240,22 @@ withTempRoot((root) => {
     false,
     'stdout rendering must not record confirmed delivery',
   );
+});
+
+// --- Case 5: end-to-end healthy path — real curator run with real daily-note
+// and registered-output sources produces a deliverable candidate. ----------
+withTempRoot((root) => {
+  const day = '2026-01-08';
+  writeIndex(root, [{ date: day, file: `outputs/${day}/decision.md`, title: 'Decision' }]);
+  writeOutputFile(
+    root,
+    `outputs/${day}/decision.md`,
+    '- Decision: the user always prefers tea over coffee in the evening.\n',
+  );
+  writeDailyNote(root, day, '- Routine log entry with no durable signal in it whatsoever.\n');
+  runNode(CURATOR, [day], root);
+  const deliveryStdout = runNode(DELIVERY, [day, '1'], root);
+  assert.match(deliveryStdout, /tea over coffee/);
 });
 
 console.log('dreaming unavailable/missing-input + fail-closed delivery guard tests passed');

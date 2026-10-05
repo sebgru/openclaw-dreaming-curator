@@ -4,18 +4,19 @@
 [![codecov](https://codecov.io/gh/sebgru/openclaw-dreaming-curator/branch/main/graph/badge.svg)](https://codecov.io/gh/sebgru/openclaw-dreaming-curator)
 [![License: MIT](https://img.shields.io/github/license/sebgru/openclaw-dreaming-curator.svg?branch=main)](LICENSE)
 
-A dependency-free, report-only review aid for OpenClaw dreaming phase output. It
-does not promote memories, edit startup files, contact a network service, or
-configure a schedule. Every suggested change requires human review and a
-separate manual edit.
+A dependency-free, report-only candidate producer for OpenClaw's durable-memory
+review queue. It reads only explicitly approved workspace sources, does not
+promote memories, edit startup files, contact a network service, or configure
+a schedule. Every suggested change requires human review and a separate manual
+edit.
 
 ## Scripts
 
-| Script                                 | Role                                                                                                                                        |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/dreaming-curator.mjs`         | Reads the day's dreaming phase files, ranks and quality-gates candidates, and writes a Markdown digest plus a canonical JSON review report. |
-| `scripts/dreaming-review-delivery.mjs` | Reads the canonical JSON report and renders one proposed review message for a slot. Stateless: printing to stdout is not delivery.          |
-| `scripts/dreaming-quality.mjs`         | Shared text-cleaning, quality-gate, and proposal helpers imported by the other two scripts.                                                 |
+| Script                                 | Role                                                                                                                                                |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/dreaming-curator.mjs`         | Reads the day's approved sources (see below), ranks and quality-gates candidates, and writes a Markdown digest plus a canonical JSON review report. |
+| `scripts/dreaming-review-delivery.mjs` | Reads the canonical JSON report and renders one proposed review message for a slot. Stateless: printing to stdout is not delivery.                  |
+| `scripts/dreaming-quality.mjs`         | Shared text-cleaning, quality-gate, and proposal helpers imported by the other two scripts.                                                         |
 
 ### Curator
 
@@ -46,14 +47,26 @@ node scripts/dreaming-review-delivery.mjs [YYYY-MM-DD] [SLOT]
 ## Workspace contract
 
 Run the scripts with the **OpenClaw workspace root as the current directory**,
-not this repository root (unless this repository is itself the workspace). The
-curator expects all three phase files for the requested UTC day:
+not this repository root (unless this repository is itself the workspace).
 
-```text
-memory/dreaming/light/YYYY-MM-DD.md
-memory/dreaming/rem/YYYY-MM-DD.md
-memory/dreaming/deep/YYYY-MM-DD.md
-```
+### Approved sources only
+
+The curator enumerates exactly two kinds of input, both read-only, over a
+**rolling 7-day lookback** ending on the requested day (to tolerate a missed
+daily run):
+
+1. **Daily notes:** `memory/YYYY-MM-DD.md` for each date in the window. A
+   missing file for a given day is tolerated (no note was written that day).
+   A file that exists but cannot be read is **not** tolerated.
+2. **Registered outputs:** files explicitly listed in `outputs/INDEX.md` in
+   dated heading sections with a `File` path. The heading date must fall inside
+   the window. A registered file that is missing from disk, or an
+   `outputs/INDEX.md` file that is missing or unreadable, is **not** tolerated.
+
+Nothing else is read: no native `memory/dreaming/{light,rem,deep}/` output, no
+session database, and no invented memory-service listing/changes endpoint (see
+`memory/handoffs/superpowers-memory-adapter-orchestration-proposal.md` §12,
+decision 23).
 
 For example, with this repository cloned beside the workspace's `memory/`
 directory:
@@ -70,12 +83,25 @@ a canonical, schema-versioned JSON review report under
 source. The JSON report is the delivery renderer's sole input; the digest is
 never used as a fallback.
 
-If any phase file is missing, the report has `status: "unavailable"`, names the
-missing input, and has no review candidates. A missing, malformed, or
-unavailable report makes the renderer print `NO_REPLY`; it must not be
-interpreted as a healthy empty review. With a valid report, the renderer prints
-one proposed review message for the requested slot. No scheduler or transport is
-included here.
+### Coverage and the no-candidates vs. incomplete distinction
+
+Both the digest (`## Source Coverage`) and the canonical JSON (`sources`
+field) always report, explicitly, which daily notes and registered outputs
+were found, missing, or unreadable.
+
+If any non-tolerated gap exists — `outputs/INDEX.md` missing/unreadable, a
+registered output file missing/unreadable, or a daily note that exists but
+can't be read — the report has `status: "unavailable"`, names every such gap
+in `missingInput`, and has **no** review candidates. This is never presented
+as a healthy empty result.
+
+Only when every applicable source was successfully enumerated and read does
+the report use `status: "ok"`; in that case an empty `candidates` array is a
+legitimate "nothing worth retaining this week" result, not a failure.
+
+A missing, malformed, or unavailable report makes the renderer print
+`NO_REPLY`; with a valid, non-empty report it prints one proposed review
+message for the requested slot. No scheduler or transport is included here.
 
 ## Development
 
