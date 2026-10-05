@@ -1,6 +1,6 @@
 {
   "name": "openclaw-dreaming-curator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Dependency-free, report-only review aid for OpenClaw dreaming phase output.",
   "private": true,
   "type": "module",
