@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import { test } from 'node:test';
 import {
   CURATOR,
@@ -8,131 +7,286 @@ import {
   digestFile,
   runNode,
   withTempRoot,
-  writePhase,
+  writeDailyNote,
+  writeIndex,
+  writeOutputFile,
 } from './helpers.mjs';
 
 const DAY = '2026-03-10'; // Tuesday, so the weekly auto-pass is off.
 const MONDAY = '2026-03-09'; // Monday, so the weekly auto-pass is on.
 
-function longBlobCandidate() {
-  const lines = ['- Candidate: Historical narrative with a lot of detail to process.'];
-  for (let i = 1; i <= 12; i += 1) {
-    lines.push(`  - detail clause number ${i} describing what happened during that block of time`);
-  }
-  lines.push('  - confidence: 0.4');
-  lines.push(`  - evidence: memory/${DAY}.md:6-6`);
-  return lines.join('\n') + '\n';
-}
-
-function richLightFixture() {
+function richDailyNote() {
   return [
-    '- Candidate: Communication Preference: The user prefers long summaries split into natural sections.',
-    '  - confidence: 0.85',
-    '  - evidence: memory/2026-03-09.md:1-1',
-    '  - status: pending',
-    '- Candidate: Lesson learned: the gateway failed after restart until the config was corrected.',
-    '  - confidence: 0.8',
-    '  - evidence: memory/2026-01-01.md:3-3',
-    '- Candidate: Media attached: image of the dashboard.',
-    '  - confidence: 0.9',
-    '  - evidence: memory/2026-03-09.md:2-2',
-    '- Candidate: Newsletter: system report for the day covering operational status.',
-    '  - confidence: 0.9',
-    '  - evidence: memory/2026-03-09.md:3-3',
-    '- Candidate: Food / health log: breakfast 500 kcal, lunch salad 300 kcal, running total 800 kcal.',
-    '  - confidence: 0.6',
-    '  - evidence: memory/2026-03-09.md:4-4',
-    '- Candidate: Food / health log: static health rule always breakfast 500 kcal and lunch salad.',
-    '  - confidence: 0.7',
-    '  - evidence: memory/2026-03-09.md:5-5',
-    '- Candidate: Research notes: GPU model estimates, vacation options, and food log corrections were discussed.',
-    '  - confidence: 0.6',
-    '  - evidence: memory/2026-03-09.md:6-6',
-    '- Candidate: Something happened today without a durable signal.',
-    '  - confidence: 0.5',
-    '  - evidence: memory/2026-03-09.md:7-7',
-    '- Candidate: Model decision: OpenRouter is configured as the fallback for background workers.',
-    '  - also used by deepseek for cheap completions',
-    '  - confidence: 0.9',
-    '  - evidence: memory/2026-03-10.md:2-2',
-    '  - status: pending',
-    '- Candidate: Todo: follow up on the backup migration project next week.',
-    '  - confidence: 0.7',
-    '  - evidence: memory/2026-03-10.md:3-3',
-    "- Candidate: Family health: the user's daughter is allergic and this is a rule to always avoid peanuts.",
-    '  - confidence: 0.8',
-    '  - evidence: memory/2026-03-10.md:4-4',
-    '- Candidate: Rule: always cite the source file for durable facts.',
-    '  - confidence: 0.75',
-    '  - evidence: MEMORY.md',
-    '- Candidate: To send an image back, attach the file first.',
-    '  - confidence: 0.6',
-    '  - evidence: memory/2026-03-10.md:5-5',
-    '- Candidate:',
-    '  - confidence: 0.5',
-    '- Candidate: Preference: the user prefers concise reports and short status updates.',
-    '  - confidence: 0.5',
-    '- Candidate: Rule: always run the full test suite before committing.',
-    '  - confidence: 0.5',
-    '  - evidence: memory/2026-03-09.md:8-8',
-    longBlobCandidate(),
+    '# 2026-03-10',
+    '',
+    '## Memory write pass',
+    '',
+    '- Communication Preference: the user prefers long summaries split into natural sections.',
+    '- Lesson learned: the gateway failed after restart until the config was corrected.',
+    '- Media attached: image of the dashboard.',
+    '- Newsletter: system report for the day covering operational status.',
+    '- Food / health log: breakfast 500 kcal, lunch salad 300 kcal, running total 800 kcal.',
+    '- Food / health log: static health rule always breakfast 500 kcal and lunch salad.',
+    '- Research notes: GPU model estimates, vacation options, and food log corrections were discussed in detail across the day.',
+    '- Something happened today without a durable signal in it at all.',
+    '- Model decision: OpenRouter is configured as the fallback for background workers.',
+    '- Todo: follow up on the backup migration project next week.',
+    "- Family health: the user's daughter is allergic and this is a rule to always avoid peanuts.",
+    '- Rule: always cite the source file for durable facts.',
+    '- To send an image back, attach the file first.',
+    '- Preference: the user prefers concise reports and short status updates.',
+    '- Rule: always run the full test suite before committing.',
+    '- TODO: review the migration plan.',
+    '- backup folder permissions marked done',
+    '',
   ].join('\n');
 }
 
-test('curator reports status unavailable when no phase input exists at all', () => {
+test('curator reports status unavailable when outputs/INDEX.md is missing', () => {
   withTempRoot((root) => {
     const day = '2026-02-01';
     const stdout = runNode(CURATOR, [day], root);
     assert.match(stdout, /Input status: UNAVAILABLE/);
-    assert.match(stdout, /No phase files exist at all/);
+    assert.match(stdout, /outputs\/INDEX\.md is missing/);
 
     const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
     assert.equal(report.status, 'unavailable');
-    assert.match(report.missingInput, /No dreaming phase input found/);
+    assert.match(report.missingInput, /outputs\/INDEX\.md/);
     assert.deepEqual(report.candidates, []);
   });
 });
 
-test('curator names the newest unrelated phase file when the day is missing', () => {
+test('curator tolerates missing daily notes as long as sources are enumerable', () => {
   withTempRoot((root) => {
-    writePhase(root, '2026-02-02', 'light', '- Candidate: The user prefers tea.\n');
-    const stdout = runNode(CURATOR, ['2026-02-03'], root);
-    assert.match(stdout, /Newest available phase file is 2026-02-02\.md/);
+    const day = '2026-02-03';
+    writeIndex(root, []);
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: ok/);
+    assert.match(stdout, /Review candidates: 0/);
+
+    const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+    assert.equal(report.status, 'ok');
+    assert.equal(report.missingInput, null);
+    assert.deepEqual(report.candidates, []);
+    assert.equal(report.sources.dailyNotes.found.length, 0);
+    assert.equal(report.sources.dailyNotes.missing.length, 7);
   });
 });
 
-test('curator treats a partial phase set as unavailable', () => {
+test('curator treats an unreadable daily note (not merely missing) as unavailable', () => {
   withTempRoot((root) => {
-    writePhase(root, '2026-02-04', 'light', '- Candidate: The user prefers tea.\n');
-    const stdout = runNode(CURATOR, ['2026-02-04'], root);
+    const day = '2026-02-04';
+    writeIndex(root, []);
+    // A directory at the expected note path is "exists but unreadable as a file".
+    fs.mkdirSync(`${root}/memory/${day}.md`, { recursive: true });
+    const stdout = runNode(CURATOR, [day], root);
     assert.match(stdout, /Input status: UNAVAILABLE/);
-    assert.match(stdout, /missing rem, deep/);
+    assert.match(stdout, /daily note\(s\) exist but could not be read/);
   });
 });
 
-test('curator emits a full digest and canonical report from rich phase input', () => {
+test('curator treats an unenumerable memory directory as unavailable', () => {
   withTempRoot((root) => {
-    writePhase(root, DAY, 'light', richLightFixture());
-    writePhase(root, DAY, 'rem', '# REM phase notes with no candidates\n');
-    writePhase(root, DAY, 'deep', '# Deep phase notes with no candidates\n');
+    const day = '2026-02-04';
+    fs.mkdirSync(`${root}/outputs`, { recursive: true });
+    fs.writeFileSync(`${root}/outputs/INDEX.md`, '# Output artifact registry\n\n## Artifacts\n');
+    const memoryDir = `${root}/memory`;
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.chmodSync(memoryDir, 0o300); // writable for report output, not enumerable
+    try {
+      const stdout = runNode(CURATOR, [day], root);
+      assert.match(stdout, /Input status: UNAVAILABLE/);
+      assert.match(stdout, /memory\/ directory is unreadable/);
+    } finally {
+      fs.chmodSync(memoryDir, 0o700);
+    }
+  });
+});
 
-    // Daily notes drive contradiction/todo hygiene signals and recentness scoring.
-    fs.mkdirSync(path.join(root, 'memory'), { recursive: true });
-    fs.writeFileSync(
-      path.join(root, 'memory', '2026-03-09.md'),
-      [
-        '# 2026-03-09',
-        '',
-        '- TODO: review the migration plan.',
-        '- backup folder permissions marked done',
-        '',
-      ].join('\n'),
+test('curator reports an absent daily-note directory before creating its report directory', () => {
+  withTempRoot((root) => {
+    const day = '2026-02-04';
+    fs.mkdirSync(`${root}/outputs`, { recursive: true });
+    fs.writeFileSync(`${root}/outputs/INDEX.md`, '# Output artifact registry\n\n## Artifacts\n');
+
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: UNAVAILABLE/);
+    assert.match(stdout, /memory\/ directory is missing/);
+
+    const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+    assert.equal(report.status, 'unavailable');
+    assert.equal(report.sources.dailyNotes.directoryState, 'missing');
+  });
+});
+
+test('curator treats a registered output listed but missing from disk as unavailable', () => {
+  withTempRoot((root) => {
+    const day = '2026-02-05';
+    writeIndex(root, [{ date: day, file: `outputs/${day}/ghost.md`, title: 'Ghost artifact' }]);
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: UNAVAILABLE/);
+    assert.match(stdout, /registered output file\(s\).*are missing on disk/);
+
+    const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+    assert.equal(report.status, 'unavailable');
+    assert.deepEqual(report.candidates, []);
+  });
+});
+
+test('curator rejects registered paths outside outputs without reading them', () => {
+  withTempRoot((root) => {
+    const day = '2026-02-05';
+    writeIndex(root, [{ date: day, file: 'outputs/../outside.md', title: 'Outside path' }]);
+    writeOutputFile(
+      root,
+      'outside.md',
+      '- Preference: this outside file must not be read or surfaced as a candidate.\n',
     );
+
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: UNAVAILABLE/);
+    assert.match(stdout, /resolve outside outputs/);
+
+    const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+    assert.equal(report.status, 'unavailable');
+    assert.deepEqual(report.candidates, []);
+    assert.deepEqual(report.sources.registeredOutputs.outsideAllowlist, ['outputs/../outside.md']);
+  });
+});
+
+test('curator refuses a registered output that is a symlink outside outputs', () => {
+  withTempRoot((root) => {
+    const day = '2026-02-05';
+    const outputDir = `${root}/outputs/${day}`;
+    writeIndex(root, [{ date: day, file: `outputs/${day}/linked.md`, title: 'Linked artifact' }]);
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(
+      `${root}/outside.md`,
+      '- Preference: a symlink target outside outputs must not be read.\n',
+    );
+    fs.symlinkSync(`${root}/outside.md`, `${outputDir}/linked.md`);
+
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: UNAVAILABLE/);
+    assert.match(stdout, /registered output file\(s\) could not be read/);
+
+    const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+    assert.equal(report.status, 'unavailable');
+    assert.deepEqual(report.candidates, []);
+  });
+});
+
+test('curator never reads native memory/dreaming/ phase files (not an approved source)', () => {
+  withTempRoot((root) => {
+    const day = '2026-02-06';
+    writeIndex(root, []);
+    writeOutputFile(
+      root,
+      `memory/dreaming/light/${day}.md`,
+      '- Candidate: The user prefers tea.\n  - confidence: 0.95\n',
+    );
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: ok/);
+    // The unapproved phase file must not surface as a review candidate.
+    assert.match(stdout, /Review candidates: 0/);
+  });
+});
+
+test('curator applies the rolling 7-day lookback window to daily notes and registered outputs', () => {
+  withTempRoot((root) => {
+    const day = '2026-03-10';
+    writeIndex(root, [
+      // In window (day-6 .. day).
+      { date: '2026-03-05', file: 'outputs/2026-03-05/in-window.md', title: 'In window' },
+      // Outside window.
+      { date: '2026-02-20', file: 'outputs/2026-02-20/too-old.md', title: 'Too old' },
+    ]);
+    writeOutputFile(
+      root,
+      'outputs/2026-03-05/in-window.md',
+      '- Decision: always route cheap tasks to the configured fallback model.\n',
+    );
+    writeOutputFile(
+      root,
+      'outputs/2026-02-20/too-old.md',
+      '- Decision: this should never be read because it is outside the window.\n',
+    );
+    // A daily note inside the window.
+    writeDailyNote(root, '2026-03-08', '- Rule: always keep this inside the window.\n');
+    // A daily note outside the window (day - 8).
+    writeDailyNote(root, '2026-03-02', '- Rule: always keep this outside the window.\n');
+
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: ok/);
+
+    const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+    assert.deepEqual(report.sources.window, { start: '2026-03-04', end: day, days: 7 });
+    assert.ok(report.sources.dailyNotes.found.includes('memory/2026-03-08.md'));
+    assert.ok(!report.sources.dailyNotes.found.includes('memory/2026-03-02.md'));
+    assert.ok(!report.sources.dailyNotes.missing.includes('memory/2026-03-02.md'));
+    assert.deepEqual(report.sources.registeredOutputs.found, ['outputs/2026-03-05/in-window.md']);
+
+    const sourceFiles = report.candidates.map((c) => c.sourceFile).join(',');
+    assert.doesNotMatch(sourceFiles, /too-old/);
+    assert.doesNotMatch(sourceFiles, /2026-03-02/);
+  });
+});
+
+test('curator parses outputs/INDEX.md entries and skips the literal format-example heading', () => {
+  withTempRoot((root) => {
+    const day = '2026-03-10';
+    // Write a registry containing the literal "## YYYY-MM-DD — Short title"
+    // documentation example before the real entries, matching the live file.
+    const content = [
+      '# Output artifact registry',
+      '',
+      '## Entry format',
+      '',
+      '```markdown',
+      '## YYYY-MM-DD — Short title',
+      '',
+      '- **File:** `outputs/YYYY-MM-DD/slug.ext`',
+      '```',
+      '',
+      '## Artifacts',
+      '',
+      `## ${day} — Real entry`,
+      '',
+      `- **File:** \`outputs/${day}/real.md\``,
+      '- **Type:** Markdown',
+      '- **Task:** test',
+      '- **Status:** complete',
+      '- **Source session:** current session',
+      '- **Summary:** test entry.',
+      '',
+    ].join('\n');
+    fs.mkdirSync(`${root}/memory`, { recursive: true });
+    fs.mkdirSync(`${root}/outputs`, { recursive: true });
+    fs.writeFileSync(`${root}/outputs/INDEX.md`, content);
+    writeOutputFile(
+      root,
+      `outputs/${day}/real.md`,
+      '- Decision: always trust only the real registered entry.\n',
+    );
+
+    const stdout = runNode(CURATOR, [day], root);
+    assert.match(stdout, /Input status: ok/);
+
+    const report = JSON.parse(fs.readFileSync(candidatesFile(root, day), 'utf8'));
+    assert.deepEqual(report.sources.registeredOutputs.found, [`outputs/${day}/real.md`]);
+    assert.equal(report.sources.registeredOutputs.missing.length, 0);
+  });
+});
+
+test('curator emits a full digest and canonical report from rich daily-note input', () => {
+  withTempRoot((root) => {
+    writeIndex(root, []);
+    writeDailyNote(root, DAY, richDailyNote());
 
     const stdout = runNode(CURATOR, [DAY], root);
     assert.match(stdout, /Input status: ok/);
     assert.match(stdout, /Contradiction signals: 1/);
-    assert.match(stdout, /Todo hygiene signals: 1/);
+    assert.match(stdout, /Todo hygiene signals: 2/);
 
     const report = JSON.parse(fs.readFileSync(candidatesFile(root, DAY), 'utf8'));
     assert.equal(report.status, 'ok');
@@ -142,35 +296,27 @@ test('curator emits a full digest and canonical report from rich phase input', (
 
     const titles = report.candidates.map((candidate) => candidate.title).join('\n');
     assert.match(titles, /Communication preferences/);
-    assert.match(titles, /Model decision/);
     assert.match(titles, /Family health/);
     assert.ok(report.candidates.every((candidate) => candidate.status === 'pending'));
+    // Media/newsletter noise and ephemeral meal-ledger entries must never
+    // reach the review queue, regardless of how they score.
+    assert.doesNotMatch(titles, /Media attached/i);
+    assert.doesNotMatch(titles, /Newsletter/i);
 
     const digest = fs.readFileSync(digestFile(root, DAY), 'utf8');
+    assert.match(digest, /## Source Coverage/);
     assert.match(digest, /## Candidate Review Queue/);
     assert.match(digest, /## Low-Confidence \/ Noise Review/);
+    assert.match(digest, /Model decision: OpenRouter/);
     assert.match(digest, /## Rejected by Quality Gate/);
     assert.match(digest, /Not due today/);
   });
 });
 
-test('curator treats an unreadable phase path as empty input', () => {
-  withTempRoot((root) => {
-    const day = '2026-02-10';
-    for (const phase of ['light', 'rem', 'deep']) {
-      fs.mkdirSync(path.join(root, 'memory', 'dreaming', phase, `${day}.md`), { recursive: true });
-    }
-    const stdout = runNode(CURATOR, [day], root);
-    assert.match(stdout, /Input status: ok/);
-    assert.match(stdout, /Review candidates: 0/);
-  });
-});
-
 test('curator marks weekly curation due from the --weekly flag', () => {
   withTempRoot((root) => {
-    writePhase(root, DAY, 'light', '- Candidate: The user prefers tea.\n');
-    writePhase(root, DAY, 'rem', '# rem\n');
-    writePhase(root, DAY, 'deep', '# deep\n');
+    writeIndex(root, []);
+    writeDailyNote(root, DAY, '- Rule: always keep weekly fixture minimal.\n');
     const stdout = runNode(CURATOR, [DAY, '--weekly'], root);
     assert.match(stdout, /Input status: ok/);
     const digest = fs.readFileSync(digestFile(root, DAY), 'utf8');
@@ -180,9 +326,8 @@ test('curator marks weekly curation due from the --weekly flag', () => {
 
 test('curator marks weekly curation due automatically on Mondays', () => {
   withTempRoot((root) => {
-    writePhase(root, MONDAY, 'light', '- Candidate: The user prefers tea.\n');
-    writePhase(root, MONDAY, 'rem', '# rem\n');
-    writePhase(root, MONDAY, 'deep', '# deep\n');
+    writeIndex(root, []);
+    writeDailyNote(root, MONDAY, '- Rule: always keep monday fixture minimal.\n');
     runNode(CURATOR, [MONDAY], root);
     const digest = fs.readFileSync(digestFile(root, MONDAY), 'utf8');
     assert.match(digest, /Weekly pass is due/);

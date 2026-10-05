@@ -35,11 +35,42 @@ export function digestFile(root, day) {
   return path.join(root, 'memory', 'dreaming', 'digests', `${day}.md`);
 }
 
-/** Write one dreaming phase file (`light`, `rem`, or `deep`) for a day. */
-export function writePhase(root, day, phase, content) {
-  const dir = path.join(root, 'memory', 'dreaming', phase);
+/** Write one approved daily-note source file (`memory/YYYY-MM-DD.md`). */
+export function writeDailyNote(root, day, content) {
+  const dir = path.join(root, 'memory');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, `${day}.md`), content);
+}
+
+/** Write a registered output artifact file under `outputs/`. */
+export function writeOutputFile(root, relPath, content) {
+  const abs = path.join(root, relPath);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, content);
+}
+
+/**
+ * Write `outputs/INDEX.md` from a list of `{ date, file, title }` entries,
+ * matching the real registry's `## YYYY-MM-DD — Title` / `- **File:** \`path\``
+ * entry format.
+ */
+export function writeIndex(root, entries) {
+  const body = entries
+    .map(
+      (entry) =>
+        `## ${entry.date} — ${entry.title || 'Untitled'}\n\n` +
+        `- **File:** \`${entry.file}\`\n` +
+        `- **Type:** Markdown\n` +
+        `- **Task:** test fixture\n` +
+        `- **Status:** complete\n` +
+        `- **Source session:** current session\n` +
+        `- **Summary:** test fixture entry.\n`,
+    )
+    .join('\n');
+  const content = '# Output artifact registry\n\n## Artifacts\n\n' + body;
+  fs.mkdirSync(path.join(root, 'outputs'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'memory'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'outputs', 'INDEX.md'), content);
 }
 
 /** Write the canonical review-candidates JSON consumed by the renderer. */
